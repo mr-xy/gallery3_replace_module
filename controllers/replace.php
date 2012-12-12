@@ -40,9 +40,7 @@ class Replace_Controller extends Controller {
     foreach($iptcTags as $key => $value) {
         $data[$key] = $iptcData->get($iptcTags[$key]);
     }
-    $_POST['iptcdata'] = $data;
-
-
+    
     $form = $this->_get_form();
     if ($form->validate()) {
       // @todo process the admin form
@@ -54,45 +52,59 @@ class Replace_Controller extends Controller {
       $renamed_old = $pathinfo_old['dirname'] . '/' . $pathinfo_old['filename'] . '_old.' . $pathinfo_old['extension'];
       rename($path, $renamed_old);
       
-      $success = rename($pathinfo_new['dirname'] . '/' . $pathinfo_new['basename'], $pathinfo_old['dirname'] . '/' . $pathinfo_old['filename'] . '.' . $pathinfo_old['extension']);
+      $success = rename($pathinfo_new['dirname'] . '/' . $pathinfo_new['basename'], $pathinfo_old['dirname'] . '/' . $pathinfo_old['filename'] . '.' . $pathinfo_new['extension']);
       if($success) {
           unlink($renamed_old);
           unlink($pathinfo_new['dirname']);
           if($item->is_movie()) {
-              message::success(t("Movie-File Replaced Successfully. Set New Thumbnail With VideoThumb-Module. {$test}"));
+              $movie_relpath = $item->relative_path();
+              $movie_relpath = str_replace($pathinfo_old['extension'], $pathinfo_new['extension'], $movie_relpath);
+              $moviepath = $item->file_path();
+              $moviepath = str_replace($pathinfo_old['extension'], $pathinfo_new['extension'], $moviepath);
+              $meta = movie::get_file_metadata($moviepath);
+              $moviename = $pathinfo_old['filename'] . '.' . $pathinfo_new['extension'];
+              
+              db::build()
+                ->update("items")
+                ->set("mime_type", $meta[2])
+                ->set("name", $moviename)
+                ->set("relative_path_cache", $movie_relpath)
+                ->where("id", "=", $item_id)
+                ->execute();
+              if($_POST['iptc_keep']) {
+                  $iptcData->write($data, $iptcTags,$item);
+              }
+              print $path;
+              message::success(t("Movie-File Replaced Successfully. Set New Thumbnail With VideoThumb-Module."));
               json::reply(array("result" => "success"));
           }elseif($item->is_photo()) {
               if($_POST['iptc_keep']) {
-                  $class = $iptcData->write($data, $iptcTags,$item);
-                  $class = serialize($class);
+                  $iptcData->write($data, $iptcTags,$item);
               }
               $item->thumb_dirty = 1;
               $item->resize_dirty = 1;
               $item->save();
               graphics::generate($item);
-              message::success(t("Image-File Replaced Successfully. {$class}"));
+              message::success(t("Image-File Replaced Successfully."));
               json::reply(array("result" => "success"));
-          }else {
-              json::reply(array("result" => "error", "html" => (string)$form));
           }
+      }else{
+          json::reply(array("result" => "error", "html" => (string)$form));
       }
-
-      #message::success(t("Replace Processing Successfully {$path}"));
-      #json::reply(array("result" => "success"));
-
-    } else {
+    }else{
       json::reply(array("result" => "error", "html" => (string)$form));
     }
   var_dump($duda);
   }
 
   private function _get_form($item_id) {
+    $filesize = ini_get('upload_max_filesize') . 'B';
     $form = new Forge("replace/handler/{$item_id}", "", "post", array("id" => "g-Replace-form"));
     $group = $form->group("replace")->label(t("Replace"));
     $group  ->checkbox('iptc_keep')
             ->label(t("Keep IPTC-data of item to be replaced."))
             ->checked('checked');
-    $group->upload("file")->label(t("File"))->size("60")->rules("allow[jpg,png,gif,flv,mpg,mp4,mpeg]|size[1MB]|required")
+    $group->upload("file")->label(t("File"))->size("60")->rules("allow[jpg,png,gif,flv,mpg,mp4,mpeg]|size[{$filesize}]|required")
       ->error_messages("required", "You must select a file")
       ->error_messages("invalid_type", "The file must be a jpg,png,gif,flv,mpg,mp4 or mpeg");
     $group->submit("")->value(t("Upload"));
