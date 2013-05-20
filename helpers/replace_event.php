@@ -162,8 +162,8 @@ class replace_event {
   static function show_user_profile($event_data) {
   }
 
-  static function site_menu($menu, $site_menu, $item_css_selector) {
-    #$item = $theme->item();
+  static function site_menu($menu, $theme) {
+    $item = $theme->item();
     if (!empty($item) && access::can("edit", $item)) {
         if ($item->is_photo() || $item->is_movie()) {
             $menu->get("options_menu")
